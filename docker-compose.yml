@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  padel-checker:
+    build: .
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - LOCATION_ID=224
+      - DAYS_TO_CHECK=7
+    restart: "no"

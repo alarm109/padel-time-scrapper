@@ -1,0 +1,18 @@
+# GCP Configuration
+project_id = "your-gcp-project-id"
+region     = "europe-west1"  # Choose your preferred region
+
+# Telegram Configuration (REQUIRED - Replace with your actual values)
+telegram_bot_token = "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+telegram_chat_id   = "123456789"
+
+# API Configuration (Optional)
+location_id   = "224"
+days_to_check = 7
+
+# Scheduler Configuration (Optional)
+schedule  = "*/5 * * * *"      # Every 5 minutes
+time_zone = "Europe/Vilnius"   # Change to your timezone
+
+# Security Configuration (Optional)
+use_secret_manager = true  # Set to false to use env vars instead of Secret Manager
