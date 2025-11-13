@@ -108,105 +108,95 @@ resource "google_secret_manager_secret_iam_member" "chat_id_access" {
 }
 
 # Cloud Run service
-resource "google_cloud_run_v2_service" "padel_checker" {
+resource "google_cloud_run_v2_job" "padel_checker" {
   name     = "padel-checker"
   location = var.region
 
   template {
-    service_account = google_service_account.cloudrun.email
+    template {
+      service_account = google_service_account.cloudrun.email
 
-    containers {
-      image = "gcr.io/${var.project_id}/padel-checker:latest"
-
-      resources {
-        limits = {
-          cpu    = "1"
-          memory = "256Mi"
-        }
-      }
-
-      scaling {
-        min_instance_count = 0  # Scale to zero when idle
-        max_instance_count = 1  # Only need one instance
-      }
-
-      # Optional: Set a reasonable timeout
       timeout = "60s"  # More than enough for your 30 requests
 
-      # Environment variables (if not using Secret Manager)
-      dynamic "env" {
-        for_each = var.use_secret_manager ? [] : [1]
-        content {
-          name  = "TELEGRAM_BOT_TOKEN"
-          value = var.telegram_bot_token
-        }
-      }
+      containers {
+        image = "gcr.io/${var.project_id}/padel-checker:latest"
 
-      dynamic "env" {
-        for_each = var.use_secret_manager ? [] : [1]
-        content {
-          name  = "TELEGRAM_CHAT_ID"
-          value = var.telegram_chat_id
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "512Mi"
+          }
         }
-      }
 
-      # Secrets from Secret Manager (if using)
-      dynamic "env" {
-        for_each = var.use_secret_manager ? [1] : []
-        content {
-          name = "TELEGRAM_BOT_TOKEN"
-          value_source {
-            secret_key_ref {
-              secret  = google_secret_manager_secret.telegram_bot_token[0].secret_id
-              version = "latest"
+        # Environment variables (if not using Secret Manager)
+        dynamic "env" {
+          for_each = var.use_secret_manager ? [] : [1]
+          content {
+            name  = "TELEGRAM_BOT_TOKEN"
+            value = var.telegram_bot_token
+          }
+        }
+
+        dynamic "env" {
+          for_each = var.use_secret_manager ? [] : [1]
+          content {
+            name  = "TELEGRAM_CHAT_ID"
+            value = var.telegram_chat_id
+          }
+        }
+
+        # Secrets from Secret Manager (if using)
+        dynamic "env" {
+          for_each = var.use_secret_manager ? [1] : []
+          content {
+            name = "TELEGRAM_BOT_TOKEN"
+            value_source {
+              secret_key_ref {
+                secret  = google_secret_manager_secret.telegram_bot_token[0].secret_id
+                version = "latest"
+              }
             }
           }
         }
-      }
 
-      dynamic "env" {
-        for_each = var.use_secret_manager ? [1] : []
-        content {
-          name = "TELEGRAM_CHAT_ID"
-          value_source {
-            secret_key_ref {
-              secret  = google_secret_manager_secret.telegram_chat_id[0].secret_id
-              version = "latest"
+        dynamic "env" {
+          for_each = var.use_secret_manager ? [1] : []
+          content {
+            name = "TELEGRAM_CHAT_ID"
+            value_source {
+              secret_key_ref {
+                secret  = google_secret_manager_secret.telegram_chat_id[0].secret_id
+                version = "latest"
+              }
             }
           }
         }
+
+        env {
+          name  = "LOCATION_ID"
+          value = var.location_id
+        }
+
+        env {
+          name  = "DAYS_TO_CHECK"
+          value = tostring(var.days_to_check)
+        }
+
+        env {
+          name  = "DAY_DELAY"
+          value = tostring(var.day_delay)
+        }
+
+        env {
+          name  = "TICKET_TO"
+          value = tostring(var.ticket_to)
+        }
+
+        env {
+          name  = "TICKET_FROM"
+          value = tostring(var.ticket_from)
+        }
       }
-
-      env {
-        name  = "LOCATION_ID"
-        value = var.location_id
-      }
-
-      env {
-        name  = "DAYS_TO_CHECK"
-        value = tostring(var.days_to_check)
-      }
-
-      env {
-        name  = "DAY_DELAY"
-        value = tostring(var.day_delay)
-      }
-
-      env {
-        name  = "TICKET_TO"
-        value = tostring(var.ticket_to)
-      }
-
-      env {
-        name  = "TICKET_FROM"
-        value = tostring(var.ticket_from)
-      }
-    }
-
-    timeout = "300s"
-
-    scaling {
-      max_instance_count = 1
     }
   }
 
@@ -216,21 +206,39 @@ resource "google_cloud_run_v2_service" "padel_checker" {
   ]
 }
 
+# Get project number (add this near the top of your file)
+data "google_project" "project" {
+  project_id = var.project_id
+}
 # Service account for Cloud Scheduler
 resource "google_service_account" "scheduler" {
   account_id   = "padel-checker-scheduler"
   display_name = "Padel Checker Scheduler Service Account"
 }
 
-# Grant invoker permission to scheduler service account
-resource "google_cloud_run_service_iam_member" "scheduler_invoker" {
-  location = google_cloud_run_v2_service.padel_checker.location
-  service  = google_cloud_run_v2_service.padel_checker.name
+# Project-level permission to call Cloud Run API
+resource "google_project_iam_member" "scheduler_run_admin" {
+  project = var.project_id
+  role    = "roles/run.admin"
+  member  = "serviceAccount:${google_service_account.scheduler.email}"
+}
+
+# Job-level permission to invoke the specific job
+resource "google_cloud_run_v2_job_iam_member" "scheduler_invoker" {
+  location = google_cloud_run_v2_job.padel_checker.location
+  name     = google_cloud_run_v2_job.padel_checker.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.scheduler.email}"
 }
 
-# Cloud Scheduler job (runs every 5 minutes)
+# Scheduler can act as the Cloud Run service account
+resource "google_service_account_iam_member" "scheduler_sa_user" {
+  service_account_id = google_service_account.cloudrun.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.scheduler.email}"
+}
+
+# Cloud Scheduler job - WITH PROJECT NUMBER IN NAMESPACE
 resource "google_cloud_scheduler_job" "padel_checker" {
   name             = "padel-checker-job"
   description      = "Trigger Padel Checker every 5 minutes"
@@ -238,6 +246,7 @@ resource "google_cloud_scheduler_job" "padel_checker" {
   time_zone        = var.time_zone
   region           = var.region
   attempt_deadline = "320s"
+  project          = data.google_project.project.project_id
 
   retry_config {
     retry_count = 1
@@ -245,16 +254,22 @@ resource "google_cloud_scheduler_job" "padel_checker" {
 
   http_target {
     http_method = "POST"
-    uri         = google_cloud_run_v2_service.padel_checker.uri
+    # Target is the Cloud Run Admin API endpoint for running a job
+    uri = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${data.google_project.project.project_id}/jobs/${google_cloud_run_v2_job.padel_checker.name}:run"
 
-    oidc_token {
+    # 1. Switch from oidc_token to oauth_token
+    oauth_token {
       service_account_email = google_service_account.scheduler.email
-      audience              = google_cloud_run_v2_service.padel_checker.uri
+      # 2. Set the required scope for the Cloud Run Admin API
+      # The cloud-platform scope is broad and covers the run API
+      scope                 = "https://www.googleapis.com/auth/cloud-platform"
     }
   }
 
   depends_on = [
     google_project_service.scheduler,
-    google_cloud_run_service_iam_member.scheduler_invoker
+    google_project_iam_member.scheduler_run_admin,
+    google_cloud_run_v2_job_iam_member.scheduler_invoker,
+    google_service_account_iam_member.scheduler_sa_user
   ]
 }

@@ -7,5 +7,8 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - LOCATION_ID=224
-      - DAYS_TO_CHECK=7
+      - DAYS_TO_CHECK=${DAYS_TO_CHECK}
+      - DAY_DELAY=${DAY_DELAY}
+      - TICKET_FROM=${TICKET_FROM}
+      - TICKET_TO=${TICKET_TO}
     restart: "no"
