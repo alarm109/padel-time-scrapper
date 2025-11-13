@@ -92,7 +92,7 @@ def parse_time(time_str):
 
 
 def find_consecutive_slots(data, date):
-    """Find 3 consecutive 30-minute time slots (any court)"""
+    """Find 3 time slots where at least 2 are consecutive (any court)"""
     if not data:
         return []
 
@@ -121,26 +121,38 @@ def find_consecutive_slots(data, date):
     # Get unique time slots (there might be multiple courts at same time)
     unique_times = sorted(set(slot["datetime"] for slot in slots))
 
-    # Find consecutive 30-minute slots
+    # Need at least 3 unique times
+    if len(unique_times) < 3:
+        return []
+
+    # Find groups of 3 slots where at least 2 are consecutive
     consecutive_groups = []
+    seen_groups = set()
 
-    for i in range(len(unique_times) - 2):
-        if unique_times[i + 1] == unique_times[i] + timedelta(
-            minutes=30
-        ) and unique_times[i + 2] == unique_times[i + 1] + timedelta(minutes=30):
-
-            # Get all slots for these three times (all court options)
+    # For each pair of consecutive slots, find a third slot
+    for i in range(len(unique_times) - 1):
+        if unique_times[i + 1] == unique_times[i] + timedelta(minutes=30):
+            # Found 2 consecutive slots: unique_times[i] and unique_times[i + 1]
             time1 = unique_times[i]
             time2 = unique_times[i + 1]
-            time3 = unique_times[i + 2]
 
-            group = {
-                "times": [time1, time2, time3],
-                "slot1": [s for s in slots if s["datetime"] == time1],
-                "slot2": [s for s in slots if s["datetime"] == time2],
-                "slot3": [s for s in slots if s["datetime"] == time3],
-            }
-            consecutive_groups.append(group)
+            # Find any third slot (doesn't need to be consecutive)
+            for j in range(len(unique_times)):
+                if j != i and j != i + 1:
+                    time3 = unique_times[j]
+                    
+                    # Create a sorted tuple to avoid duplicates
+                    group_key = tuple(sorted([time1, time2, time3]))
+                    if group_key not in seen_groups:
+                        seen_groups.add(group_key)
+                        
+                        group = {
+                            "times": sorted([time1, time2, time3]),
+                            "slot1": [s for s in slots if s["datetime"] == time1],
+                            "slot2": [s for s in slots if s["datetime"] == time2],
+                            "slot3": [s for s in slots if s["datetime"] == time3],
+                        }
+                        consecutive_groups.append(group)
 
     return consecutive_groups
 
@@ -152,16 +164,15 @@ def format_message(date, consecutive_groups):
     message += f"📅 Date: {date_str}\n\n"
 
     for idx, group in enumerate(consecutive_groups, 1):
-        start_time = group["times"][0].strftime("%H:%M")
-        minutes_to_add = timedelta(minutes=30)
-        end_time = (group["times"][2] + minutes_to_add).strftime("%H:%M")
+        # Format all 3 times
+        times_str = ", ".join([t.strftime("%H:%M") for t in group["times"]])
         total_price = sum(
             slot["price"]
             for slot in [group["slot1"][0], group["slot2"][0], group["slot3"][0]]
         )
 
         message += f"<b>Option {idx}:</b>\n"
-        message += f"⏰ Time: {start_time} - {end_time}\n"
+        message += f"⏰ Times: {times_str}\n"
         message += f"💰 Total Price: {total_price/100}\n\n"
 
     return message
