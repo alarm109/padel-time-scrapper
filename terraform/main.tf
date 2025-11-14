@@ -36,6 +36,11 @@ resource "google_project_service" "secretmanager" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "storage" {
+  service = "storage.googleapis.com"
+  disable_on_destroy = false
+}
+
 # Create secrets in Secret Manager (optional, more secure)
 resource "google_secret_manager_secret" "telegram_bot_token" {
   count     = var.use_secret_manager ? 1 : 0
@@ -69,6 +74,32 @@ resource "google_secret_manager_secret_version" "telegram_chat_id" {
   count  = var.use_secret_manager ? 1 : 0
   secret = google_secret_manager_secret.telegram_chat_id[0].id
   secret_data = var.telegram_chat_id
+}
+
+# GCS bucket for storing state
+resource "google_storage_bucket" "state_bucket" {
+  name          = "padel-checker-state-${var.project_id}"
+  location      = "EU"  # Multi-region EU (includes europe-west1)
+  force_destroy = true
+
+  uniform_bucket_level_access = true
+
+  # Optional: Add lifecycle rule to clean up old state files
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      age = 30  # Delete files older than 30 days
+    }
+  }
+
+  # Optional: Add versioning to keep history
+  versioning {
+    enabled = true
+  }
+
+  depends_on = [google_project_service.storage]
 }
 
 # Build the container image
@@ -105,6 +136,13 @@ resource "google_secret_manager_secret_iam_member" "chat_id_access" {
   secret_id = google_secret_manager_secret.telegram_chat_id[0].id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.cloudrun.email}"
+}
+
+# Grant Cloud Run service account access to GCS bucket
+resource "google_storage_bucket_iam_member" "state_bucket_access" {
+  bucket = google_storage_bucket.state_bucket.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.cloudrun.email}"
 }
 
 # Cloud Run service
@@ -196,13 +234,24 @@ resource "google_cloud_run_v2_job" "padel_checker" {
           name  = "TICKET_FROM"
           value = tostring(var.ticket_from)
         }
+
+        env {
+          name  = "GCS_BUCKET_NAME"
+          value = google_storage_bucket.state_bucket.name
+        }
+
+        env {
+          name  = "GCS_STATE_FILE"
+          value = "padel_state.json"
+        }
       }
     }
   }
 
   depends_on = [
     google_project_service.run,
-    null_resource.build_image
+    null_resource.build_image,
+    google_storage_bucket.state_bucket
   ]
 }
 

@@ -27,3 +27,13 @@ output "resume_job_command" {
   description = "Command to resume the scheduler job"
   value       = "gcloud scheduler jobs resume ${google_cloud_scheduler_job.padel_checker.name} --location=${var.region}"
 }
+
+output "state_bucket_name" {
+  description = "GCS bucket name for storing state"
+  value       = google_storage_bucket.state_bucket.name
+}
+
+output "view_state_command" {
+  description = "Command to view the current state file"
+  value       = "gsutil cat gs://${google_storage_bucket.state_bucket.name}/padel_state.json"
+}
