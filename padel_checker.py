@@ -504,6 +504,35 @@ def normalize_game_record(game, earliest_start, latest_start):
     return normalized
 
 
+def is_game_in_allowed_time(game):
+    """Check if a game falls within allowed time windows.
+    
+    On weekdays (Mon-Fri): only allow games starting 00:00-07:00 or 18:00-21:59
+    On weekends (Sat-Sun): allow all games
+    """
+    start_dt = game.get("parsed_start")
+    if not start_dt:
+        return False
+    
+    # weekday() returns 0=Monday, 6=Sunday
+    is_weekend = start_dt.weekday() >= 5  # Saturday=5, Sunday=6
+    
+    if is_weekend:
+        return True
+    
+    # Weekday: check time windows
+    game_time = start_dt.time()
+    morning_start = datetime.strptime("00:00", "%H:%M").time()
+    morning_end = datetime.strptime("07:00", "%H:%M").time()
+    evening_start = datetime.strptime("18:00", "%H:%M").time()
+    evening_end = datetime.strptime("21:59", "%H:%M").time()
+    
+    in_morning_window = morning_start <= game_time <= morning_end
+    in_evening_window = evening_start <= game_time <= evening_end
+    
+    return in_morning_window or in_evening_window
+
+
 def fetch_available_games():
     """Fetch upcoming games that have available spots."""
     if not GAME_LEVELS:
@@ -569,6 +598,9 @@ def fetch_available_games():
 
     games = list(aggregated_games.values())
     games.sort(key=lambda g: g.get("parsed_start", datetime.max))
+
+    # Filter games by weekday/weekend time constraints
+    games = [g for g in games if is_game_in_allowed_time(g)]
 
     if games:
         logger.info("Found %d open game(s) matching filters", len(games))
@@ -721,30 +753,30 @@ def check_availability():
                 f"Found {len(consecutive_groups)} consecutive slot group(s) on {date_str}"
             )
 
-    # if not all_consecutive_groups:
-    #     logger.info("No consecutive slots found in any of the checked days")
-    # else:
-    #     changed_dates = find_changed_dates(previous_state_raw, all_consecutive_groups)
+    if not all_consecutive_groups:
+        logger.info("No consecutive slots found in any of the checked days")
+    else:
+        changed_dates = find_changed_dates(previous_state_raw, all_consecutive_groups)
 
-    #     if changed_dates:
-    #         for date_str in sorted(changed_dates):
-    #             if date_str not in all_consecutive_groups:
-    #                 continue
+        if changed_dates:
+            for date_str in sorted(changed_dates):
+                if date_str not in all_consecutive_groups:
+                    continue
 
-    #             consecutive_groups = all_consecutive_groups[date_str]
-    #             check_date = datetime.strptime(date_str, "%Y-%m-%d")
-    #             message = format_message(check_date, consecutive_groups)
-    #             send_telegram_message(message)
+                consecutive_groups = all_consecutive_groups[date_str]
+                check_date = datetime.strptime(date_str, "%Y-%m-%d")
+                message = format_message(check_date, consecutive_groups)
+                send_telegram_message(message)
 
-    #         state_payload["dates"] = generate_state_by_date(all_consecutive_groups)
-    #         state_changed = True
-    #         logger.info(f"Sent notifications for {len(changed_dates)} date(s)")
-    #     else:
-    #         logger.info("No changes detected for court availability; skipping alerts")
+            state_payload["dates"] = generate_state_by_date(all_consecutive_groups)
+            state_changed = True
+            logger.info(f"Sent notifications for {len(changed_dates)} date(s)")
+        else:
+            logger.info("No changes detected for court availability; skipping alerts")
 
-    # if not all_consecutive_groups and previous_state.get("dates"):
-    #     state_payload["dates"] = {}
-    #     state_changed = True
+    if not all_consecutive_groups and previous_state.get("dates"):
+        state_payload["dates"] = {}
+        state_changed = True
 
     games_state, games_changed = scrape_and_notify_games(previous_state.get("games"))
     state_payload["games"] = games_state
