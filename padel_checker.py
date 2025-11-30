@@ -50,6 +50,10 @@ GAME_TIME_TO = os.environ.get("GAME_TIME_TO", "23:59:59")
 GAME_PAGE_SIZE = max(int(os.environ.get("GAME_PAGE_SIZE", "50")), 1)
 MAX_TRACKED_GAMES = max(int(os.environ.get("MAX_TRACKED_GAMES", "200")), 1)
 
+GAME_NAME_EXCLUSIONS = [
+    "vaikų",
+]
+
 
 def to_int(value):
     """Best-effort conversion to integer."""
@@ -474,6 +478,11 @@ def format_game_price(price_value):
 def normalize_game_record(game, earliest_start, latest_start):
     """Filter and annotate games that match configured constraints."""
     if not game:
+        return None
+
+    # Filter out games whose names contain any of the exclusion strings
+    game_name = (game.get("name") or "").lower()
+    if any(exclusion in game_name for exclusion in GAME_NAME_EXCLUSIONS):
         return None
 
     level = (game.get("level") or "").strip()
