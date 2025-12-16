@@ -747,6 +747,12 @@ def check_availability():
 
     for day_offset in range(DAY_DELAY, DAYS_TO_CHECK + DAY_DELAY):
         check_date = datetime.now() + timedelta(days=day_offset)
+        
+        # Only check Monday (0) and Tuesday (1)
+        if check_date.weekday() not in (0, 1):
+            logger.debug(f"Skipping {check_date.strftime('%Y-%m-%d (%A)')} - not Monday or Tuesday")
+            continue
+        
         logger.info(f"Checking {check_date.strftime('%Y-%m-%d')}...")
 
         data = fetch_available_slots(check_date)

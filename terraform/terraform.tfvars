@@ -10,8 +10,8 @@ telegram_chat_id   = "6772347030"
 location_id = "224"
 days_to_check = 30
 day_delay = 1
-ticket_from = "17:30"
-ticket_to = "21:30"
+ticket_from = "18:30"
+ticket_to = "20:30"
 
 # Scheduler Configuration (Optional)
 schedule  = "*/5 * * * *"      # Every 5 minutes
