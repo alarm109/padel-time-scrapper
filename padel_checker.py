@@ -29,6 +29,11 @@ TICKET_FROM = os.environ.get("TICKET_FROM", "00:00")
 TICKET_TO = os.environ.get("TICKET_TO", "23:59")
 GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME")  # e.g., "padel-checker-state"
 GCS_STATE_FILE = os.environ.get("GCS_STATE_FILE", "padel_state.json")
+GAME_SCRAPING_ENABLED = os.environ.get("GAME_SCRAPING_ENABLED", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 GAMES_API_URL = "https://activezone.fun/api/v1/settings/games"
 GAME_LEVELS = [
     level.strip()
@@ -748,9 +753,9 @@ def check_availability():
     for day_offset in range(DAY_DELAY, DAYS_TO_CHECK + DAY_DELAY):
         check_date = datetime.now() + timedelta(days=day_offset)
         
-        # Only check Monday (0), Tuesday (1), and Thursday (3)
-        if check_date.weekday() not in (0, 1, 3):
-            logger.debug(f"Skipping {check_date.strftime('%Y-%m-%d (%A)')} - not Monday, Tuesday, or Thursday")
+        # Only check Monday (0) and Tuesday (1)
+        if check_date.weekday() not in (0, 1):
+            logger.debug(f"Skipping {check_date.strftime('%Y-%m-%d (%A)')} - not Monday or Tuesday")
             continue
         
         logger.info(f"Checking {check_date.strftime('%Y-%m-%d')}...")
@@ -793,9 +798,12 @@ def check_availability():
         state_payload["dates"] = {}
         state_changed = True
 
-    games_state, games_changed = scrape_and_notify_games(previous_state.get("games"))
-    state_payload["games"] = games_state
-    state_changed = state_changed or games_changed
+    if GAME_SCRAPING_ENABLED:
+        games_state, games_changed = scrape_and_notify_games(previous_state.get("games"))
+        state_payload["games"] = games_state
+        state_changed = state_changed or games_changed
+    else:
+        logger.info("Game scraping is disabled (set GAME_SCRAPING_ENABLED=true to enable)")
 
     if state_changed:
         state_payload["last_updated"] = datetime.now().isoformat()
